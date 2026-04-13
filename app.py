@@ -442,7 +442,7 @@ def starter_page():
 
 @app.route("/starter/signup", methods=["POST"])
 def starter_signup():
-    """Free tier: instant API key on email submission."""
+    """Free tier: instant API key on email submission. One per IP address."""
     data = request.get_json() or request.form
     email = data.get("email", "").strip()
     name = data.get("name", "").strip()
@@ -450,11 +450,27 @@ def starter_signup():
     if not email or "@" not in email:
         return jsonify({"error": "Valid email required"}), 400
 
-    # Check if this email already has a key
+    # Get real IP (behind Cloudflare)
+    client_ip = request.headers.get("CF-Connecting-IP",
+                request.headers.get("X-Forwarded-For", request.remote_addr))
+    if client_ip and "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+
+    # Check if this email already has a free key
     for key, info in API_KEYS_DB.items():
         if isinstance(info, dict) and info.get("email") == email and info.get("tier") == "starter":
             return render_template_string(SUCCESS_PAGE, api_key=key, email=email,
                                            tier="starter", docs_url=request.host_url + "docs")
+
+    # Check if this IP already has a free key (prevent abuse)
+    for key, info in API_KEYS_DB.items():
+        if isinstance(info, dict) and info.get("tier") == "starter" and info.get("signup_ip") == client_ip:
+            existing_email = info.get("email", "unknown")
+            return jsonify({
+                "error": "Free tier limit: one account per network",
+                "message": f"A free account already exists from this network (registered to {existing_email[:3]}***). Please use your existing key or upgrade to Professional.",
+                "action": "https://clymb.online/#pricing"
+            }), 403
 
     # Generate new key
     api_key = "clymb_free_" + hashlib.sha256(
@@ -465,6 +481,7 @@ def starter_signup():
         "tier": "starter",
         "email": email,
         "name": name,
+        "signup_ip": client_ip,
         "created": datetime.now().isoformat(),
         "calls": 0,
         "limit": 500,  # 500 calls/month
