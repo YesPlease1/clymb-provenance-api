@@ -62,14 +62,18 @@ API_KEYS_DB = load_api_keys()
 def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        global API_KEYS_DB
         key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        # Reload keys from disk on every check (ensures multi-worker consistency)
+        if key not in API_KEYS_DB:
+            API_KEYS_DB = load_api_keys()
         if key not in API_KEYS_DB:
             return jsonify({"error": "Invalid API key. Get one at https://clymb.online"}), 401
         # Track usage
-        if key in API_KEYS_DB and isinstance(API_KEYS_DB[key], dict):
+        if isinstance(API_KEYS_DB.get(key), dict):
             API_KEYS_DB[key]["last_used"] = datetime.now().isoformat()
             API_KEYS_DB[key]["calls"] = API_KEYS_DB[key].get("calls", 0) + 1
-            if API_KEYS_DB[key]["calls"] % 100 == 0:
+            if API_KEYS_DB[key]["calls"] % 50 == 0:
                 save_api_keys(API_KEYS_DB)
         return f(*args, **kwargs)
     return decorated
