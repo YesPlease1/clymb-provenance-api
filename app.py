@@ -389,6 +389,51 @@ def landing():
     return send_from_directory(".", "index.html")
 
 
+@app.route("/starter")
+def starter_page():
+    return render_template_string(STARTER_PAGE)
+
+
+@app.route("/starter/signup", methods=["POST"])
+def starter_signup():
+    """Free tier: instant API key on email submission."""
+    data = request.get_json() or request.form
+    email = data.get("email", "").strip()
+    name = data.get("name", "").strip()
+
+    if not email or "@" not in email:
+        return jsonify({"error": "Valid email required"}), 400
+
+    # Check if this email already has a key
+    for key, info in API_KEYS_DB.items():
+        if isinstance(info, dict) and info.get("email") == email and info.get("tier") == "starter":
+            return render_template_string(SUCCESS_PAGE, api_key=key, email=email,
+                                           tier="starter", docs_url=request.host_url + "docs")
+
+    # Generate new key
+    api_key = "clymb_free_" + hashlib.sha256(
+        f"{email}{time.time()}".encode()
+    ).hexdigest()[:20]
+
+    API_KEYS_DB[api_key] = {
+        "tier": "starter",
+        "email": email,
+        "name": name,
+        "created": datetime.now().isoformat(),
+        "calls": 0,
+        "limit": 1000,  # 1000 calls/month
+    }
+    save_api_keys(API_KEYS_DB)
+
+    notify_owner(
+        f"NEW FREE SIGNUP: {email}",
+        f"Name: {name}\nEmail: {email}\nKey: {api_key}\nTier: Starter (free)\nTime: {datetime.now().isoformat()}"
+    )
+
+    return render_template_string(SUCCESS_PAGE, api_key=api_key, email=email,
+                                   tier="starter", docs_url=request.host_url + "docs")
+
+
 @app.route("/docs")
 def docs_page():
     return send_from_directory(".", "docs.html")
@@ -546,6 +591,47 @@ pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; ov
   -d '{"text": "Your content here..."}'</pre>
 <p><a href="{{ docs_url }}">Full API Documentation</a></p>
 <p>Questions? Email <a href="mailto:alastair.mccaffer@hotmail.co.uk">alastair.mccaffer@hotmail.co.uk</a></p>
+</body></html>"""
+
+
+STARTER_PAGE = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Free API Key — Clymb</title>
+<style>
+body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 80px auto; padding: 24px; color: #1e293b; }
+h1 { font-size: 1.8rem; margin-bottom: 8px; } p { color: #64748b; margin-bottom: 24px; }
+a { color: #3b82f6; text-decoration: none; }
+.form-group { margin-bottom: 16px; }
+label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
+input { width: 100%; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 1rem; }
+input:focus { outline: none; border-color: #3b82f6; }
+.btn { display: inline-block; padding: 14px 32px; background: #3b82f6; color: white; border: none;
+  border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; width: 100%; }
+.btn:hover { background: #2563eb; }
+.includes { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 8px; margin-bottom: 24px; }
+.includes li { padding: 4px 0; font-size: 0.9rem; }
+.back { display: inline-block; margin-bottom: 24px; color: #64748b; font-size: 0.9rem; }
+</style></head><body>
+<a href="/" class="back">&larr; Back</a>
+<h1>Get Your Free API Key</h1>
+<p>1,000 API calls per month. No credit card required. Instant activation.</p>
+<div class="includes"><strong>Starter includes:</strong>
+<ul><li>/classify — detect AI-generated content</li><li>/decay — predict model collapse</li>
+<li>1,000 calls/month</li><li>Community support</li></ul></div>
+<form action="/starter/signup" method="POST" onsubmit="return submitForm(event)">
+  <div class="form-group"><label>Your Name</label><input type="text" name="name" id="name" required placeholder="Jane Smith"></div>
+  <div class="form-group"><label>Work Email</label><input type="email" name="email" id="email" required placeholder="jane@company.com"></div>
+  <button type="submit" class="btn">Get Free API Key</button>
+</form>
+<script>
+function submitForm(e) {
+  e.preventDefault();
+  fetch('/starter/signup', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name: document.getElementById('name').value, email: document.getElementById('email').value})
+  }).then(r => r.text()).then(html => { document.documentElement.innerHTML = html; });
+  return false;
+}
+</script>
 </body></html>"""
 
 
