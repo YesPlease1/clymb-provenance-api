@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clymb AI Provenance Platform — Know Your Training Data</title>
+<meta name="description" content="EU AI Act compliance. Detect AI-generated training data, predict model collapse, issue provenance certificates. Patented McCaffer-Bovill technology.">
+<style>
+:root {
+    --primary: #0f172a;
+    --accent: #3b82f6;
+    --accent-light: #60a5fa;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --bg: #ffffff;
+    --bg-alt: #f8fafc;
+    --text: #1e293b;
+    --text-light: #64748b;
+    --border: #e2e8f0;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    line-height: 1.6;
+}
+
+.container { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+
+/* Hero */
+.hero {
+    background: var(--primary);
+    color: white;
+    padding: 80px 0 100px;
+    text-align: center;
+}
+
+.hero h1 {
+    font-size: 3rem;
+    font-weight: 800;
+    margin-bottom: 16px;
+    letter-spacing: -0.02em;
+}
+
+.hero h1 span { color: var(--accent-light); }
+
+.hero .subtitle {
+    font-size: 1.3rem;
+    color: #94a3b8;
+    max-width: 700px;
+    margin: 0 auto 32px;
+}
+
+.hero .cta-row {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.btn {
+    display: inline-block;
+    padding: 14px 32px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+    border: none;
+}
+
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-light); }
+.btn-outline { background: transparent; color: white; border: 2px solid #475569; }
+.btn-outline:hover { border-color: white; }
+
+/* Patent badge */
+.patent-badge {
+    display: inline-block;
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent-light);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 24px;
+}
+
+/* Problem section */
+.problem {
+    padding: 80px 0;
+    background: var(--bg-alt);
+}
+
+.problem h2 {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+.problem-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 32px;
+}
+
+.problem-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+}
+
+.problem-card .icon {
+    font-size: 2rem;
+    margin-bottom: 16px;
+}
+
+.problem-card h3 {
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+}
+
+.problem-card p {
+    color: var(--text-light);
+    font-size: 0.95rem;
+}
+
+/* Solution section */
+.solution {
+    padding: 80px 0;
+}
+
+.solution h2 {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.solution .subhead {
+    text-align: center;
+    color: var(--text-light);
+    margin-bottom: 48px;
+    font-size: 1.1rem;
+}
+
+.endpoint-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+}
+
+.endpoint-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    transition: border-color 0.2s;
+}
+
+.endpoint-card:hover { border-color: var(--accent); }
+
+.endpoint-card .method {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: monospace;
+    margin-right: 8px;
+}
+
+.endpoint-card .path {
+    font-family: monospace;
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+
+.endpoint-card .desc {
+    color: var(--text-light);
+    margin-top: 12px;
+    font-size: 0.9rem;
+}
+
+/* Pricing */
+.pricing {
+    padding: 80px 0;
+    background: var(--bg-alt);
+}
+
+.pricing h2 {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+.pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    max-width: 960px;
+    margin: 0 auto;
+}
+
+.price-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 36px;
+    text-align: center;
+    position: relative;
+}
+
+.price-card.featured {
+    border-color: var(--accent);
+    box-shadow: 0 4px 24px rgba(59, 130, 246, 0.15);
+}
+
+.price-card .badge {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: white;
+    padding: 4px 16px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.price-card .tier {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+}
+
+.price-card .price {
+    font-size: 2.8rem;
+    font-weight: 800;
+    margin-bottom: 4px;
+}
+
+.price-card .price span { font-size: 1rem; color: var(--text-light); }
+
+.price-card .period { color: var(--text-light); margin-bottom: 24px; }
+
+.price-card ul {
+    list-style: none;
+    text-align: left;
+    margin-bottom: 28px;
+}
+
+.price-card li {
+    padding: 8px 0;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.price-card li::before {
+    content: "\2713 ";
+    color: var(--success);
+    font-weight: 700;
+    margin-right: 8px;
+}
+
+/* Code example */
+.code-section {
+    padding: 80px 0;
+}
+
+.code-section h2 {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 48px;
+}
+
+.code-block {
+    background: var(--primary);
+    color: #e2e8f0;
+    border-radius: 12px;
+    padding: 32px;
+    overflow-x: auto;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.code-block .comment { color: #64748b; }
+.code-block .string { color: #86efac; }
+.code-block .keyword { color: #93c5fd; }
+
+/* Formula */
+.formula-section {
+    padding: 60px 0;
+    text-align: center;
+    background: var(--primary);
+    color: white;
+}
+
+.formula {
+    font-size: 1.8rem;
+    font-family: 'Georgia', serif;
+    font-style: italic;
+    margin: 24px 0;
+    color: var(--accent-light);
+}
+
+.formula-desc {
+    color: #94a3b8;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* CTA */
+.cta-section {
+    padding: 80px 0;
+    text-align: center;
+}
+
+.cta-section h2 {
+    font-size: 2rem;
+    margin-bottom: 16px;
+}
+
+.cta-section p {
+    color: var(--text-light);
+    margin-bottom: 32px;
+    font-size: 1.1rem;
+}
+
+/* Footer */
+footer {
+    background: var(--primary);
+    color: #94a3b8;
+    padding: 40px 0;
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+footer a { color: var(--accent-light); text-decoration: none; }
+
+@media (max-width: 768px) {
+    .hero h1 { font-size: 2rem; }
+    .hero .subtitle { font-size: 1rem; }
+    .formula { font-size: 1.2rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+<div class="container">
+    <div class="patent-badge">Patent GB2607042.5 — Clymb Ltd</div>
+    <h1>Know Your <span>Training Data</span></h1>
+    <p class="subtitle">
+        Is your AI training data contaminated with AI-generated content?
+        We tell you — and predict exactly when your model will collapse.
+        EU AI Act compliant. Patented technology.
+    </p>
+    <div class="cta-row">
+        <a href="#pricing" class="btn btn-primary">Start Free Trial</a>
+        <a href="#api" class="btn btn-outline">API Documentation</a>
+    </div>
+</div>
+</section>
+
+<!-- Problem -->
+<section class="problem">
+<div class="container">
+    <h2>The Model Collapse Problem</h2>
+    <div class="problem-grid">
+        <div class="problem-card">
+            <div class="icon">&#9888;</div>
+            <h3>AI Is Eating Its Own Output</h3>
+            <p>Over 50% of internet content is now AI-generated. Your training data is contaminated — and you probably don't know it.</p>
+        </div>
+        <div class="problem-card">
+            <div class="icon">&#128200;</div>
+            <h3>Model Collapse Is Inevitable</h3>
+            <p>Models trained on AI-generated data progressively lose diversity. Each generation is worse. Without intervention, collapse is mathematically guaranteed.</p>
+        </div>
+        <div class="problem-card">
+            <div class="icon">&#9878;</div>
+            <h3>The EU AI Act Requires Proof</h3>
+            <p>Article 53 requires AI providers to document training data provenance. You need to prove your data is clean — or face penalties up to 7% of global revenue.</p>
+        </div>
+    </div>
+</div>
+</section>
+
+<!-- Formula -->
+<section class="formula-section">
+<div class="container">
+    <div class="patent-badge">McCaffer-Bovill Activation Potential</div>
+    <div class="formula">F(n) = cos&sup2;(&theta;&#8320;&radic;n / 2)</div>
+    <p class="formula-desc">
+        The patented quality decay function that predicts exactly when your model will collapse.
+        At generation n, training data fidelity F(n) decreases as cumulative AI contamination grows.
+        We compute n<sub>collapse</sub> — the generation where your model becomes untrustworthy.
+    </p>
+</div>
+</section>
+
+<!-- Solution / API -->
+<section class="solution" id="api">
+<div class="container">
+    <h2>Six API Endpoints. Complete Provenance.</h2>
+    <p class="subhead">Drop-in REST API. One line of code. Full EU AI Act compliance.</p>
+    <div class="endpoint-grid">
+        <div class="endpoint-card">
+            <span class="method">POST</span><span class="path">/classify</span>
+            <p class="desc">Classify content as HUMAN, MACHINE, or INDETERMINATE. Uses statistical analysis: compression ratio, entropy, n-gram deviation, sentence structure variance.</p>
+        </div>
+        <div class="endpoint-card">
+            <span class="method">POST</span><span class="path">/gate</span>
+            <p class="desc">Gate your training pipeline. Send data in, get back an admit/reject decision with provenance certificate. Blocks contaminated data before it reaches your model.</p>
+        </div>
+        <div class="endpoint-card">
+            <span class="method">POST</span><span class="path">/decay</span>
+            <p class="desc">Predict quality at any generation depth. Returns the full McCaffer-Bovill decay curve and n<sub>collapse</sub> — the exact point where your model becomes unsafe.</p>
+        </div>
+        <div class="endpoint-card">
+            <span class="method">POST</span><span class="path">/watermark</span>
+            <p class="desc">Embed invisible provenance markers in AI-generated content. Survives copy-paste. Machine-recoverable. Proves content origin for downstream consumers.</p>
+        </div>
+        <div class="endpoint-card">
+            <span class="method">POST</span><span class="path">/verify</span>
+            <p class="desc">Verify content provenance. Extracts watermarks, classifies origin, estimates generational depth, and predicts remaining fidelity.</p>
+        </div>
+        <div class="endpoint-card">
+            <span class="method">POST</span><span class="path">/certify</span>
+            <p class="desc">Issue a cryptographically signed provenance certificate. HMAC-SHA256 sealed. Tamper-evident. Legally defensible audit trail for regulators.</p>
+        </div>
+    </div>
+</div>
+</section>
+
+<!-- Code Example -->
+<section class="code-section">
+<div class="container">
+    <h2>Three Lines of Code</h2>
+    <div class="code-block">
+<span class="comment"># Before training, gate every data item</span>
+<span class="keyword">import</span> requests
+
+response = requests.post(<span class="string">"https://api.clymb.ai/gate"</span>, json={
+    <span class="string">"text"</span>: training_example,
+    <span class="string">"generation_depth"</span>: estimated_depth,
+    <span class="string">"min_fidelity"</span>: 0.7
+}, headers={<span class="string">"X-API-Key"</span>: YOUR_KEY})
+
+<span class="keyword">if</span> response.json()[<span class="string">"admitted"</span>]:
+    add_to_training_set(training_example)
+<span class="keyword">else</span>:
+    log_rejected(response.json()[<span class="string">"reason"</span>])
+    </div>
+</div>
+</section>
+
+<!-- Pricing -->
+<section class="pricing" id="pricing">
+<div class="container">
+    <h2>Simple Pricing</h2>
+    <div class="pricing-grid">
+        <div class="price-card">
+            <div class="tier">Starter</div>
+            <div class="price">&pound;0<span>/month</span></div>
+            <div class="period">Free forever</div>
+            <ul>
+                <li>1,000 API calls/month</li>
+                <li>/classify endpoint</li>
+                <li>/decay endpoint</li>
+                <li>Community support</li>
+                <li>Demo API key</li>
+            </ul>
+            <a href="#" class="btn btn-outline" style="color: var(--text); border-color: var(--border);">Get Started</a>
+        </div>
+        <div class="price-card featured">
+            <div class="badge">Most Popular</div>
+            <div class="tier">Professional</div>
+            <div class="price">&pound;99<span>/month</span></div>
+            <div class="period">For teams building AI products</div>
+            <ul>
+                <li>50,000 API calls/month</li>
+                <li>All 6 endpoints</li>
+                <li>Provenance certificates</li>
+                <li>Output watermarking</li>
+                <li>Training data gating</li>
+                <li>Email support</li>
+                <li>EU AI Act compliance report</li>
+            </ul>
+            <a href="#" class="btn btn-primary">Start Free Trial</a>
+        </div>
+        <div class="price-card">
+            <div class="tier">Enterprise</div>
+            <div class="price">&pound;499<span>/month</span></div>
+            <div class="period">Unlimited scale</div>
+            <ul>
+                <li>Unlimited API calls</li>
+                <li>All 6 endpoints</li>
+                <li>Custom decay parameters</li>
+                <li>Dedicated API key</li>
+                <li>Priority support</li>
+                <li>On-premise deployment option</li>
+                <li>Custom provenance rules</li>
+                <li>Audit-ready compliance pack</li>
+            </ul>
+            <a href="#" class="btn btn-outline" style="color: var(--text); border-color: var(--border);">Contact Sales</a>
+        </div>
+    </div>
+</div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+<div class="container">
+    <h2>Don't Wait for Model Collapse</h2>
+    <p>The EU AI Act compliance deadline is approaching. Start protecting your training data today.</p>
+    <a href="#pricing" class="btn btn-primary">Start Free Trial</a>
+</div>
+</section>
+
+<!-- Footer -->
+<footer>
+<div class="container">
+    <p><strong>Clymb Ltd</strong> &mdash; Patent GB2607042.5 &mdash; McCaffer-Bovill Activation Potential</p>
+    <p style="margin-top: 8px;">
+        <a href="mailto:alastair.mccaffer@hotmail.co.uk">Contact</a> &nbsp;|&nbsp;
+        <a href="#api">API Docs</a> &nbsp;|&nbsp;
+        <a href="https://github.com/YesPlease1/clymb-provenance-api">GitHub</a>
+    </p>
+    <p style="margin-top: 16px; font-size: 0.8rem;">&copy; 2026 Clymb Ltd. All rights reserved. UK Patent Application GB2607042.5.</p>
+</div>
+</footer>
+
+</body>
+</html>

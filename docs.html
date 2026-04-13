@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Documentation — Clymb AI Provenance Platform</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; line-height: 1.6; }
+.container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+h1 { font-size: 2.2rem; margin-bottom: 8px; }
+h2 { font-size: 1.6rem; margin-top: 48px; margin-bottom: 16px; padding-top: 24px; border-top: 1px solid #e2e8f0; }
+h3 { font-size: 1.1rem; margin-top: 24px; margin-bottom: 8px; }
+p { margin-bottom: 12px; color: #475569; }
+code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.9rem; }
+pre { background: #0f172a; color: #e2e8f0; padding: 20px; border-radius: 8px; overflow-x: auto; margin: 16px 0; font-size: 0.85rem; line-height: 1.6; }
+.method { display: inline-block; background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; font-family: monospace; }
+.url { font-family: monospace; font-weight: 600; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; }
+th { background: #f8fafc; font-weight: 600; }
+.note { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 4px; margin: 16px 0; font-size: 0.9rem; }
+.warning { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px; margin: 16px 0; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Clymb AI Provenance API</h1>
+<p>Complete API documentation. Base URL: <code>https://api.clymb.ai</code></p>
+
+<div class="note">
+<strong>Authentication:</strong> All endpoints (except /health) require an API key via the <code>X-API-Key</code> header.
+</div>
+
+<h2>Authentication</h2>
+<pre>curl -X POST https://api.clymb.ai/classify \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"text": "..."}'</pre>
+
+<h2>POST /classify</h2>
+<p>Classify content as HUMAN, MACHINE, or INDETERMINATE using statistical analysis.</p>
+
+<h3>Request</h3>
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+<tr><td><code>text</code></td><td>string</td><td>Yes</td><td>Content to classify (min 50 characters)</td></tr>
+</table>
+
+<h3>Response</h3>
+<pre>{
+  "classification": "MACHINE",
+  "confidence": 0.72,
+  "distance": 2.45,
+  "features": {
+    "compression_ratio": 0.68,
+    "char_entropy": 4.21,
+    "unique_word_ratio": 0.93,
+    "avg_sentence_length": 24.5,
+    "sentence_variance": 2.1,
+    "trigram_uniqueness": 0.97
+  }
+}</pre>
+
+<table>
+<tr><th>Field</th><th>Description</th></tr>
+<tr><td><code>classification</code></td><td>HUMAN, MACHINE, or INDETERMINATE</td></tr>
+<tr><td><code>confidence</code></td><td>0.0 to 1.0 — how certain the classification is</td></tr>
+<tr><td><code>distance</code></td><td>Mahalanobis distance from human reference distribution</td></tr>
+<tr><td><code>features</code></td><td>Statistical features extracted from the text</td></tr>
+</table>
+
+<h2>POST /gate</h2>
+<p>Gate training data — admit or reject with provenance tracking. Use this in your training pipeline to block contaminated data.</p>
+
+<h3>Request</h3>
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+<tr><td><code>text</code></td><td>string</td><td>Yes</td><td>Training data content</td></tr>
+<tr><td><code>generation_depth</code></td><td>integer</td><td>No</td><td>Estimated AI generation depth (default: 1)</td></tr>
+<tr><td><code>min_fidelity</code></td><td>float</td><td>No</td><td>Minimum acceptable quality score 0-1 (default: 0.5)</td></tr>
+<tr><td><code>source</code></td><td>string</td><td>No</td><td>Data source identifier</td></tr>
+<tr><td><code>block_machine</code></td><td>boolean</td><td>No</td><td>Block high-confidence machine content (default: false)</td></tr>
+</table>
+
+<h3>Response</h3>
+<pre>{
+  "admitted": true,
+  "reason": "passed_all_gates",
+  "fidelity": 0.9975,
+  "generation_depth": 1,
+  "n_collapse": 246,
+  "origin": {
+    "classification": "HUMAN",
+    "confidence": 0.65
+  },
+  "data_hash": "a1b2c3d4e5f6g7h8",
+  "timestamp": "2026-04-13T20:00:00"
+}</pre>
+
+<h2>POST /decay</h2>
+<p>Predict quality decay using the McCaffer-Bovill activation potential. Returns the full decay curve and collapse predictions.</p>
+
+<h3>Request</h3>
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+<tr><td><code>generation_depth</code></td><td>integer</td><td>Yes</td><td>Generation depth to query</td></tr>
+<tr><td><code>theta_0</code></td><td>float</td><td>No</td><td>Decay rate parameter (default: 0.1)</td></tr>
+</table>
+
+<h3>Response</h3>
+<pre>{
+  "query_depth": 5,
+  "quality_at_depth": 0.9752,
+  "n_collapse_50pct": 246,
+  "n_collapse_10pct": 741,
+  "theta_0": 0.1,
+  "model": "McCaffer-Bovill F(n) = cos²(θ₀√n / 2)",
+  "patent": "GB2607042.5 Section 4.2",
+  "decay_curve": [
+    {"n": 0, "quality": 1.0},
+    {"n": 1, "quality": 0.9975},
+    ...
+  ]
+}</pre>
+
+<div class="note">
+<strong>The McCaffer-Bovill Formula:</strong> F(n) = cos²(θ₀√n / 2) where n is the generation depth and θ₀ is the contamination rate. This is not a curve fit — it's derived from the physics of activation potentials (McCaffer PhD, Glasgow, 1977). Patent GB2607042.5 Section 4.2.
+</div>
+
+<h2>POST /watermark</h2>
+<p>Embed invisible provenance markers in AI-generated content using Unicode tag characters.</p>
+
+<h3>Request</h3>
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+<tr><td><code>text</code></td><td>string</td><td>Yes</td><td>Content to watermark</td></tr>
+<tr><td><code>model</code></td><td>string</td><td>No</td><td>Generating model name</td></tr>
+<tr><td><code>metadata</code></td><td>object</td><td>No</td><td>Additional metadata to embed</td></tr>
+</table>
+
+<h3>Response</h3>
+<pre>{
+  "watermarked_text": "The original text... [invisible watermark embedded]",
+  "original_length": 150,
+  "watermarked_length": 312,
+  "timestamp": "2026-04-13T20:00:00"
+}</pre>
+
+<h2>POST /verify</h2>
+<p>Verify content provenance — extract watermarks, classify origin, estimate generation depth.</p>
+
+<h3>Request</h3>
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+<tr><td><code>text</code></td><td>string</td><td>Yes</td><td>Content to verify</td></tr>
+</table>
+
+<h3>Response</h3>
+<pre>{
+  "watermark_detected": true,
+  "watermark": {"m": "gpt-4", "t": 1713045600, "verified": true},
+  "origin_classification": {"classification": "MACHINE", "confidence": 0.85},
+  "estimated_depth": 1,
+  "predicted_fidelity": 0.9975
+}</pre>
+
+<h2>POST /certify</h2>
+<p>Issue a cryptographically signed provenance certificate. HMAC-SHA256 sealed, tamper-evident, legally defensible.</p>
+
+<h3>Request</h3>
+<table>
+<tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+<tr><td><code>text</code></td><td>string</td><td>Yes</td><td>Content to certify</td></tr>
+</table>
+
+<h3>Response</h3>
+<pre>{
+  "content_hash": "a1b2c3d4e5f6...",
+  "origin": "MACHINE",
+  "confidence": 0.85,
+  "provenance_depth": 1,
+  "predicted_fidelity": 0.9975,
+  "watermark_verified": true,
+  "issued_by": "Clymb Ltd",
+  "patent": "GB2607042.5",
+  "signature": "f8e9d0c1b2a3...",
+  "timestamp": "2026-04-13T20:00:00"
+}</pre>
+
+<div class="warning">
+<strong>Certificate signatures</strong> are computed using HMAC-SHA256 with your account's signing key. To verify a certificate independently, recompute the HMAC over the certificate fields (excluding the signature itself) using your key.
+</div>
+
+<h2>GET /health</h2>
+<p>Health check endpoint. No authentication required.</p>
+<pre>{
+  "status": "healthy",
+  "service": "Clymb Data Provenance API",
+  "patent": "GB2607042.5",
+  "version": "1.0"
+}</pre>
+
+<h2>Rate Limits</h2>
+<table>
+<tr><th>Plan</th><th>Calls/month</th><th>Rate limit</th></tr>
+<tr><td>Starter (free)</td><td>1,000</td><td>10 req/min</td></tr>
+<tr><td>Professional</td><td>50,000</td><td>100 req/min</td></tr>
+<tr><td>Enterprise</td><td>Unlimited</td><td>1,000 req/min</td></tr>
+</table>
+
+<h2>Error Codes</h2>
+<table>
+<tr><th>Code</th><th>Meaning</th></tr>
+<tr><td>200</td><td>Success</td></tr>
+<tr><td>400</td><td>Bad request — missing required fields</td></tr>
+<tr><td>401</td><td>Invalid API key</td></tr>
+<tr><td>429</td><td>Rate limit exceeded</td></tr>
+<tr><td>500</td><td>Server error</td></tr>
+</table>
+
+<h2>SDKs & Libraries</h2>
+<p>Python:</p>
+<pre>pip install clymb-provenance  # Coming soon</pre>
+<p>For now, use any HTTP client (requests, curl, fetch).</p>
+
+<p style="margin-top: 48px; color: #94a3b8; font-size: 0.85rem;">
+&copy; 2026 Clymb Ltd. Patent GB2607042.5. All rights reserved.
+</p>
+
+</div>
+</body>
+</html>
