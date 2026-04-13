@@ -65,6 +65,63 @@ TIER_LIMITS = {
     "enterprise": -1,      # Unlimited
 }
 
+# Per-second rate limits (prevents burst abuse)
+TIER_RATE_PER_SECOND = {
+    "starter": 2,        # 2 req/sec
+    "professional": 20,  # 20 req/sec
+    "enterprise": 100,   # 100 req/sec
+}
+
+# Track per-key request timestamps for rate limiting
+_rate_tracker = {}  # key -> [timestamps]
+
+# Disposable email domains to block
+DISPOSABLE_DOMAINS = {
+    "tempmail.com", "guerrillamail.com", "throwaway.email", "temp-mail.org",
+    "fakeinbox.com", "sharklasers.com", "guerrillamailblock.com", "grr.la",
+    "guerrillamail.info", "guerrillamail.net", "guerrillamail.de", "mailinator.com",
+    "maildrop.cc", "dispostable.com", "yopmail.com", "trashmail.com", "trashmail.net",
+    "10minutemail.com", "tempail.com", "tempr.email", "discard.email", "mailnesia.com",
+    "getairmail.com", "mohmal.com", "burnermail.io", "inboxbear.com", "emailondeck.com",
+    "crazymailing.com", "anonbox.net", "mytemp.email", "mailcatch.com", "nada.email",
+    "getnada.com", "tempinbox.com", "throwawaymail.com", "mailsac.com", "harakirimail.com",
+    "tmail.io", "tmpmail.net", "tmpmail.org", "minutemail.com", "safetymail.info",
+}
+
+
+def get_client_ip():
+    """Get real client IP behind Cloudflare."""
+    ip = request.headers.get("CF-Connecting-IP",
+         request.headers.get("X-Real-IP",
+         request.headers.get("X-Forwarded-For", request.remote_addr)))
+    if ip and "," in ip:
+        ip = ip.split(",")[0].strip()
+    return ip
+
+
+def is_disposable_email(email):
+    """Check if email is from a disposable email provider."""
+    domain = email.lower().split("@")[-1] if "@" in email else ""
+    return domain in DISPOSABLE_DOMAINS
+
+
+def check_rate_limit(key, tier):
+    """Per-second rate limiting. Returns True if allowed."""
+    now = time.time()
+    max_per_sec = TIER_RATE_PER_SECOND.get(tier, 2)
+
+    if key not in _rate_tracker:
+        _rate_tracker[key] = []
+
+    # Clean old timestamps (older than 1 second)
+    _rate_tracker[key] = [t for t in _rate_tracker[key] if now - t < 1.0]
+
+    if len(_rate_tracker[key]) >= max_per_sec:
+        return False
+
+    _rate_tracker[key].append(now)
+    return True
+
 
 def require_api_key(f):
     @wraps(f)
@@ -89,8 +146,16 @@ def require_api_key(f):
                 "action": "Resubscribe at https://clymb.online/#pricing"
             }), 403
 
-        # Check monthly call limit
+        # Per-second rate limit (prevents burst abuse)
         tier = info.get("tier", "starter")
+        if not check_rate_limit(key, tier):
+            return jsonify({
+                "error": "Rate limit exceeded. Slow down.",
+                "limit": f"{TIER_RATE_PER_SECOND.get(tier, 2)} requests/second",
+                "tier": tier,
+            }), 429
+
+        # Check monthly call limit
         limit = TIER_LIMITS.get(tier, 500)
         if limit > 0:  # -1 means unlimited
             # Reset counter on new month
@@ -111,9 +176,36 @@ def require_api_key(f):
 
             info["monthly_calls"] = monthly_calls + 1
 
-        # Track total usage
+        # Track total usage + IP for sharing detection
+        client_ip = get_client_ip()
         info["last_used"] = datetime.now().isoformat()
         info["calls"] = info.get("calls", 0) + 1
+
+        # Track unique IPs per key (detect sharing)
+        seen_ips = set(info.get("seen_ips", []))
+        seen_ips.add(client_ip)
+        info["seen_ips"] = list(seen_ips)[-20:]  # Keep last 20
+
+        # Free tier: block if key used from more than 3 different IPs
+        if tier == "starter" and len(seen_ips) > 3:
+            info["suspended"] = True
+            info["suspend_reason"] = "Key sharing detected"
+            save_api_keys(API_KEYS_DB)
+            notify_owner(f"KEY SUSPENDED: {info.get('email','?')}",
+                        f"Key {key[:12]}... used from {len(seen_ips)} IPs. Likely shared.")
+            return jsonify({
+                "error": "Account suspended: API key sharing detected",
+                "message": "Free keys are for individual use only. Upgrade to Professional for team access.",
+                "action": "https://clymb.online/#pricing"
+            }), 403
+
+        # Check suspended flag
+        if info.get("suspended"):
+            return jsonify({
+                "error": f"Account suspended: {info.get('suspend_reason', 'policy violation')}",
+                "action": "Contact support at https://clymb.online/contact"
+            }), 403
+
         API_KEYS_DB[key] = info
         if info["calls"] % 25 == 0:
             save_api_keys(API_KEYS_DB)
@@ -450,11 +542,20 @@ def starter_signup():
     if not email or "@" not in email:
         return jsonify({"error": "Valid email required"}), 400
 
+    # Block disposable emails
+    if is_disposable_email(email):
+        return jsonify({
+            "error": "Disposable email addresses are not allowed",
+            "message": "Please use your work or personal email address.",
+        }), 400
+
+    # Block obviously fake emails
+    local_part = email.split("@")[0].lower()
+    if len(local_part) < 2 or local_part in ("test", "fake", "asdf", "temp", "null", "none", "admin"):
+        return jsonify({"error": "Please use a real email address"}), 400
+
     # Get real IP (behind Cloudflare)
-    client_ip = request.headers.get("CF-Connecting-IP",
-                request.headers.get("X-Forwarded-For", request.remote_addr))
-    if client_ip and "," in client_ip:
-        client_ip = client_ip.split(",")[0].strip()
+    client_ip = get_client_ip()
 
     # Check if this email already has a free key
     for key, info in API_KEYS_DB.items():
