@@ -59,22 +59,64 @@ def save_api_keys(keys):
 API_KEYS_DB = load_api_keys()
 
 
+TIER_LIMITS = {
+    "starter": 500,       # 500 calls/month (free)
+    "professional": 50000, # 50,000 calls/month
+    "enterprise": -1,      # Unlimited
+}
+
+
 def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         global API_KEYS_DB
         key = request.headers.get("X-API-Key") or request.args.get("api_key")
-        # Reload keys from disk on every check (ensures multi-worker consistency)
+        # Reload keys from disk if key not found in memory
         if key not in API_KEYS_DB:
             API_KEYS_DB = load_api_keys()
         if key not in API_KEYS_DB:
             return jsonify({"error": "Invalid API key. Get one at https://clymb.online"}), 401
-        # Track usage
-        if isinstance(API_KEYS_DB.get(key), dict):
-            API_KEYS_DB[key]["last_used"] = datetime.now().isoformat()
-            API_KEYS_DB[key]["calls"] = API_KEYS_DB[key].get("calls", 0) + 1
-            if API_KEYS_DB[key]["calls"] % 50 == 0:
-                save_api_keys(API_KEYS_DB)
+
+        info = API_KEYS_DB[key]
+        if not isinstance(info, dict):
+            info = {"tier": "starter", "calls": 0}
+
+        # Check if key has been revoked (cancelled subscription)
+        if info.get("revoked"):
+            return jsonify({
+                "error": "API key revoked. Your subscription was cancelled.",
+                "revoked_at": info.get("revoked_at", ""),
+                "action": "Resubscribe at https://clymb.online/#pricing"
+            }), 403
+
+        # Check monthly call limit
+        tier = info.get("tier", "starter")
+        limit = TIER_LIMITS.get(tier, 500)
+        if limit > 0:  # -1 means unlimited
+            # Reset counter on new month
+            current_month = datetime.now().strftime("%Y-%m")
+            if info.get("billing_month") != current_month:
+                info["monthly_calls"] = 0
+                info["billing_month"] = current_month
+
+            monthly_calls = info.get("monthly_calls", 0)
+            if monthly_calls >= limit:
+                return jsonify({
+                    "error": "Monthly call limit reached",
+                    "limit": limit,
+                    "used": monthly_calls,
+                    "tier": tier,
+                    "action": "Upgrade at https://clymb.online/#pricing"
+                }), 429
+
+            info["monthly_calls"] = monthly_calls + 1
+
+        # Track total usage
+        info["last_used"] = datetime.now().isoformat()
+        info["calls"] = info.get("calls", 0) + 1
+        API_KEYS_DB[key] = info
+        if info["calls"] % 25 == 0:
+            save_api_keys(API_KEYS_DB)
         return f(*args, **kwargs)
     return decorated
 
@@ -425,7 +467,7 @@ def starter_signup():
         "name": name,
         "created": datetime.now().isoformat(),
         "calls": 0,
-        "limit": 1000,  # 1000 calls/month
+        "limit": 500,  # 500 calls/month
     }
     save_api_keys(API_KEYS_DB)
 
@@ -576,25 +618,125 @@ SUCCESS_PAGE = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Welcome to Clymb</title>
 <style>
-body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 80px auto; padding: 24px; color: #1e293b; }
-h1 { color: #10b981; } .key-box { background: #0f172a; color: #86efac; padding: 20px; border-radius: 8px;
-font-family: monospace; font-size: 1.1rem; margin: 20px 0; word-break: break-all; }
+body { font-family: -apple-system, sans-serif; max-width: 700px; margin: 40px auto; padding: 24px; color: #1e293b; line-height: 1.6; }
+h1 { color: #10b981; } h2 { margin-top: 32px; font-size: 1.3rem; }
+.key-box { background: #0f172a; color: #86efac; padding: 20px; border-radius: 8px;
+font-family: monospace; font-size: 1.1rem; margin: 16px 0; word-break: break-all; position: relative; }
+.copy-btn { position: absolute; right: 12px; top: 12px; background: #3b82f6; color: white;
+border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+.copy-btn:hover { background: #2563eb; }
 .warning { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px; margin: 16px 0; }
-a { color: #3b82f6; } code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
-pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; }
+a { color: #3b82f6; } code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.6; }
+.step { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 16px 0; }
+.step-num { background: #3b82f6; color: white; width: 28px; height: 28px; border-radius: 50%;
+display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; margin-right: 8px; }
+.tier-info { background: #ecfdf5; border: 1px solid #bbf7d0; padding: 16px; border-radius: 8px; margin: 16px 0; }
 </style></head><body>
 <h1>Welcome to Clymb AI Provenance Platform</h1>
-<p>Your <strong>{{ tier }}</strong> subscription is active.</p>
+<p>Your <strong>{{ tier }}</strong> plan is active. Follow the steps below to start using the API.</p>
+
+<div class="tier-info">
+<strong>Your plan: {{ tier | capitalize }}</strong><br>
+{% if tier == 'starter' %}500 API calls per month | /classify and /decay endpoints
+{% elif tier == 'professional' %}50,000 API calls per month | All 6 endpoints | Provenance certificates
+{% elif tier == 'enterprise' %}Unlimited API calls | All 6 endpoints | Priority support{% endif %}
+</div>
+
 <h2>Your API Key</h2>
-<div class="key-box">{{ api_key }}</div>
-<div class="warning"><strong>Save this key now.</strong> You will need it for all API calls. It won't be shown again.</div>
-<h2>Quick Start</h2>
-<pre>curl -X POST https://api.clymb.online/classify \\
-  -H "Content-Type: application/json" \\
-  -H "X-API-Key: {{ api_key }}" \\
-  -d '{"text": "Your content here..."}'</pre>
-<p><a href="{{ docs_url }}">Full API Documentation</a></p>
-<p>Questions? Email <a href="mailto:alastair.mccaffer@hotmail.co.uk">alastair.mccaffer@hotmail.co.uk</a></p>
+<div class="key-box" id="keyBox">{{ api_key }}<button class="copy-btn" onclick="navigator.clipboard.writeText('{{ api_key }}');this.textContent='Copied!'">Copy</button></div>
+<div class="warning"><strong>Save this key now.</strong> Store it somewhere safe. You will need it for every API call. It will not be shown again.</div>
+
+<h2>How to Use — Step by Step</h2>
+
+<div class="step">
+<span class="step-num">1</span><strong>Save your API key</strong><br>
+Copy the key above and save it as an environment variable on your system:<br>
+<strong>Linux / Mac:</strong>
+<pre>export CLYMB_API_KEY="{{ api_key }}"</pre>
+<strong>Windows (PowerShell):</strong>
+<pre>$env:CLYMB_API_KEY="{{ api_key }}"</pre>
+Or save it in a <code>.env</code> file in your project:<pre>CLYMB_API_KEY={{ api_key }}</pre>
+</div>
+
+<div class="step">
+<span class="step-num">2</span><strong>Test the API with curl</strong><br>
+Open a terminal and run this command to verify your key works:
+<pre>curl -X POST https://api.clymb.online/classify \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: {{ api_key }}" \
+  -d '{"text": "The implementation of machine learning algorithms requires careful consideration of hyperparameter tuning."}'</pre>
+You should get back a JSON response with <code>classification</code>, <code>confidence</code>, and <code>features</code>.
+</div>
+
+<div class="step">
+<span class="step-num">3</span><strong>Integrate into your code (Python example)</strong><br>
+<pre>import requests
+import os
+
+API_KEY = os.environ.get("CLYMB_API_KEY", "{{ api_key }}")
+BASE_URL = "https://api.clymb.online"
+
+def classify_content(text):
+    resp = requests.post(f"{BASE_URL}/classify",
+        json={"text": text},
+        headers={"X-API-Key": API_KEY})
+    return resp.json()
+
+def gate_training_data(text, max_depth=5):
+    resp = requests.post(f"{BASE_URL}/gate",
+        json={"text": text, "generation_depth": max_depth, "min_fidelity": 0.7},
+        headers={"X-API-Key": API_KEY})
+    result = resp.json()
+    return result["admitted"]
+
+# Example usage
+result = classify_content("Your training data here...")
+print(f"Origin: {result['classification']} ({result['confidence']:.0%} confidence)")
+</pre>
+</div>
+
+<div class="step">
+<span class="step-num">4</span><strong>Add to your training pipeline</strong><br>
+Gate every piece of training data before it enters your model:
+<pre># Before adding to training set:
+for item in training_data:
+    if gate_training_data(item["text"]):
+        clean_data.append(item)  # Admitted
+    else:
+        rejected.append(item)    # Blocked — contaminated
+
+print(f"Clean: {len(clean_data)}, Rejected: {len(rejected)}")
+</pre>
+</div>
+
+<div class="step">
+<span class="step-num">5</span><strong>Predict model collapse</strong><br>
+Check when your model will degrade:
+<pre>resp = requests.post(f"{BASE_URL}/decay",
+    json={"generation_depth": 10},
+    headers={"X-API-Key": API_KEY})
+data = resp.json()
+print(f"Quality at depth 10: {data['quality_at_depth']:.1%}")
+print(f"Model collapses at generation: {data['n_collapse_50pct']}")
+</pre>
+</div>
+
+<h2>API Reference</h2>
+<table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+<tr style="background:#f8fafc;"><th style="text-align:left;padding:8px;border-bottom:1px solid #e2e8f0;">Endpoint</th><th style="text-align:left;padding:8px;border-bottom:1px solid #e2e8f0;">What it does</th></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>POST /classify</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Is this content human or AI-generated?</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>POST /gate</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Should this data enter my training pipeline?</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>POST /decay</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">When will my model collapse from contamination?</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>POST /watermark</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Embed invisible provenance in AI output</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>POST /verify</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Verify content provenance and extract watermarks</td></tr>
+<tr><td style="padding:8px;border-bottom:1px solid #e2e8f0;"><code>POST /certify</code></td><td style="padding:8px;border-bottom:1px solid #e2e8f0;">Issue a signed provenance certificate</td></tr>
+</table>
+<p style="margin-top:16px;"><a href="{{ docs_url }}">Full API Documentation &rarr;</a></p>
+
+<h2>Need Help?</h2>
+<p><a href="/contact">Contact us</a> or email <a href="mailto:alastair.mccaffer@hotmail.co.uk">alastair.mccaffer@hotmail.co.uk</a></p>
+<p style="margin-top:32px;color:#94a3b8;font-size:0.85rem;">&copy; 2026 Clymb Ltd. Patent GB2607042.5.</p>
 </body></html>"""
 
 
@@ -618,10 +760,10 @@ input:focus { outline: none; border-color: #3b82f6; }
 </style></head><body>
 <a href="/" class="back">&larr; Back</a>
 <h1>Get Your Free API Key</h1>
-<p>1,000 API calls per month. No credit card required. Instant activation.</p>
+<p>500 API calls per month. No credit card required. Instant activation.</p>
 <div class="includes"><strong>Starter includes:</strong>
 <ul><li>/classify — detect AI-generated content</li><li>/decay — predict model collapse</li>
-<li>1,000 calls/month</li><li>Community support</li></ul></div>
+<li>500 calls/month</li><li>Community support</li></ul></div>
 <form action="/starter/signup" method="POST" onsubmit="return submitForm(event)">
   <div class="form-group"><label>Your Name</label><input type="text" name="name" id="name" required placeholder="Jane Smith"></div>
   <div class="form-group"><label>Work Email</label><input type="email" name="email" id="email" required placeholder="jane@company.com"></div>
