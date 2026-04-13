@@ -16,7 +16,7 @@ No ARIA internals are exposed. This is a clean API wrapper.
 
 Author: Clymb Ltd — Patent 24 (GB2607042.5)
 """
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect, send_from_directory
 import hashlib
 import hmac
 import math
@@ -25,12 +25,19 @@ import json
 import time
 import os
 import re
+import stripe
 from datetime import datetime
 from collections import Counter
 from functools import wraps
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=".")
 app.config["SECRET_KEY"] = os.environ.get("API_SECRET", "clymb-provenance-2026")
+
+# Stripe
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+PRICE_PROFESSIONAL = os.environ.get("STRIPE_PRICE_PRO", "")
+PRICE_ENTERPRISE = os.environ.get("STRIPE_PRICE_ENT", "")
 
 # Simple API key auth
 API_KEYS = set(os.environ.get("API_KEYS", "demo-key-2026").split(","))
@@ -384,6 +391,112 @@ def api_certify():
     ).hexdigest()[:32]
 
     return jsonify(cert)
+
+
+# ============================================================
+# STRIPE CHECKOUT ENDPOINTS
+# ============================================================
+
+@app.route("/")
+def landing():
+    """Serve the landing page."""
+    return send_from_directory(".", "index.html")
+
+
+@app.route("/docs")
+def docs():
+    """Serve API documentation."""
+    return send_from_directory(".", "docs.html")
+
+
+@app.route("/checkout/professional", methods=["GET"])
+def checkout_professional():
+    """Create Stripe Checkout session for Professional tier."""
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": PRICE_PROFESSIONAL, "quantity": 1}],
+            mode="subscription",
+            success_url=request.host_url + "success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=request.host_url + "#pricing",
+            metadata={"tier": "professional"},
+        )
+        return redirect(session.url, code=303)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/checkout/enterprise", methods=["GET"])
+def checkout_enterprise():
+    """Create Stripe Checkout session for Enterprise tier."""
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": PRICE_ENTERPRISE, "quantity": 1}],
+            mode="subscription",
+            success_url=request.host_url + "success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=request.host_url + "#pricing",
+            metadata={"tier": "enterprise"},
+        )
+        return redirect(session.url, code=303)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/success")
+def checkout_success():
+    """Post-checkout success page."""
+    session_id = request.args.get("session_id")
+    if session_id:
+        try:
+            session = stripe.checkout.Session.retrieve(session_id)
+            customer_email = session.get("customer_details", {}).get("email", "")
+            # Generate API key for customer
+            api_key = "clymb_" + hashlib.sha256(
+                f"{session_id}{time.time()}".encode()
+            ).hexdigest()[:24]
+            # Add to authorized keys
+            API_KEYS.add(api_key)
+            return jsonify({
+                "status": "success",
+                "message": "Welcome to Clymb AI Provenance Platform!",
+                "api_key": api_key,
+                "email": customer_email,
+                "docs": request.host_url + "docs",
+                "note": "Save your API key — you will need it for all API calls.",
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"status": "success", "message": "Thank you for subscribing!"})
+
+
+@app.route("/webhook/stripe", methods=["POST"])
+def stripe_webhook():
+    """Handle Stripe webhook events (subscription lifecycle)."""
+    payload = request.get_data(as_text=True)
+    sig = request.headers.get("Stripe-Signature")
+    endpoint_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+    if endpoint_secret:
+        try:
+            event = stripe.Webhook.construct_event(payload, sig, endpoint_secret)
+        except Exception:
+            return jsonify({"error": "Invalid signature"}), 400
+    else:
+        event = json.loads(payload)
+
+    event_type = event.get("type", "")
+
+    if event_type == "checkout.session.completed":
+        session = event["data"]["object"]
+        # Log new subscription
+        print(f"  [stripe] New subscription: {session.get('customer_email', 'unknown')} — {session.get('metadata', {}).get('tier', '?')}")
+
+    elif event_type == "customer.subscription.deleted":
+        # Subscription cancelled — revoke API key
+        print(f"  [stripe] Subscription cancelled: {event['data']['object'].get('id', '?')}")
+
+    return jsonify({"received": True})
 
 
 if __name__ == "__main__":
